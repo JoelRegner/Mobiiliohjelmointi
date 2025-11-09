@@ -1,19 +1,26 @@
 import AntDesign from "@expo/vector-icons/AntDesign";
 import { CameraView, useCameraPermissions } from "expo-camera";
-import { Image } from "expo-image";
+import * as FileSystem from "expo-file-system";
 import { useRouter } from "expo-router";
 import { useRef, useState } from "react";
-import { Button, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  Button,
+  Image,
+  ScrollView,
+  Platform,
+} from "react-native";
 
 export default function App() {
   const [permission, requestPermission] = useCameraPermissions();
   const ref = useRef<CameraView>(null);
-  const [uri, setUri] = useState<string | null>(null);
   const router = useRouter();
+  const [photoUri, setPhotoUri] = useState<string | null>(null);
 
-  if (!permission) {
-    return null;
-  }
+  if (!permission) return null;
 
   if (!permission.granted) {
     return (
@@ -27,76 +34,100 @@ export default function App() {
   }
 
   const takePicture = async () => {
-    const photo = await ref.current?.takePictureAsync();
-    if (photo?.uri) setUri(photo.uri);
+    try {
+      const photo = await ref.current?.takePictureAsync({
+        base64: false,
+        quality: 1,
+      });
+
+      if (photo?.uri) {
+     
+        setPhotoUri(photo.uri);
+      }
+    } catch (error) {
+      console.log("Error taking picture:", error);
+    }
   };
 
+  const savePicture = async () => {
+    if (!photoUri) return;
 
-  const renderPicture = (uri: string) => {
-    return (
-      <View>
-        <Image
-          source={{ uri }}
-          contentFit="contain"
-          style={{ width: 300, aspectRatio: 1 }}
-        />
-        <Button onPress={() => setUri(null)} title="Take another picture" />
+    try {
+      const dirUri = FileSystem.documentDirectory + "images";
+      const dirInfo = await FileSystem.getInfoAsync(dirUri);
+      if (!dirInfo.exists) {
+        await FileSystem.makeDirectoryAsync(dirUri, { intermediates: true });
+      }
+
+      const newFileUri = dirUri + "/" + Date.now() + ".jpg";
+
+      await FileSystem.copyAsync({
+        from: photoUri,
+        to: newFileUri,
+      });
+
+      console.log("Saved image to:", newFileUri);
+      router.push("/(tabs)/kuvat");
+    } catch (error) {
+      console.log("Error saving image:", error);
+    }
+  };
+
+  const discardPicture = () => {
+    setPhotoUri(null);
+  };
+
+  const renderCamera = () => (
+    <View style={styles.cameraContainer}>
+      <CameraView
+        style={styles.camera}
+        ref={ref}
+        mute={false}
+        responsiveOrientationWhenOrientationLocked
+      />
+      <View style={styles.shutterContainer}>
+        <Pressable onPress={() => router.push("/(tabs)/kuvat")}>
+          <AntDesign name="picture" size={32} color="white" />
+        </Pressable>
+        <Pressable onPress={takePicture}>
+          {({ pressed }) => (
+            <View style={[styles.shutterBtn, { opacity: pressed ? 0.5 : 1 }]}>
+              <View style={[styles.shutterBtnInner, { backgroundColor: "white" }]} />
+            </View>
+          )}
+        </Pressable>
+        <View style={{ width: 32 }} />
       </View>
-    );
-  };
-
-  const renderCamera = () => {
-    return (
-      <View style={styles.cameraContainer}>
-        <CameraView
-          style={styles.camera}
-          ref={ref}
-          mute={false}
-          responsiveOrientationWhenOrientationLocked
-        />
-        <View style={styles.shutterContainer}>
-          {/* left: open gallery (kuvat screen) */}
-          <Pressable onPress={() => router.push("/(tabs)/kuvat") }>
-            <AntDesign name="picture" size={32} color="white" />
-          </Pressable>
-          <Pressable onPress={takePicture}>
-            {({ pressed }) => (
-              <View
-                style={[
-                  styles.shutterBtn,
-                  {
-                    opacity: pressed ? 0.5 : 1,
-                  },
-                ]}
-              >
-                <View
-                  style={[
-                    styles.shutterBtnInner,
-                    {
-                      backgroundColor: "white",
-                    },
-                  ]}
-                />
-              </View>
-            )}
-          </Pressable>
-          {/* right: (empty) reserved for future controls */}
-        </View>
-      </View>
-    );
-  };
-
-  return (
-    <View style={styles.container}>
-      {uri ? renderPicture(uri) : renderCamera()}
     </View>
   );
+
+  const renderPreview = () => (
+    <View style={styles.container}>
+      <ScrollView
+        style={{ flex: 1 }}
+        maximumZoomScale={3}
+        minimumZoomScale={1}
+        contentContainerStyle={{ alignItems: "center", justifyContent: "center" }}
+      >
+        <Image
+          source={{ uri: photoUri! }}
+          style={styles.previewImage}
+        />
+      </ScrollView>
+      <View style={styles.previewButtons}>
+        <Button title="Save" onPress={savePicture} />
+        <Button title="Discard" onPress={discardPicture} color="red" />
+      </View>
+    </View>
+  );
+
+  return <View style={styles.container}>{photoUri ? renderPreview() : renderCamera()}</View>;
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#fff",
+    backgroundColor: "#000",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -126,5 +157,17 @@ const styles = StyleSheet.create({
     width: 70,
     height: 70,
     borderRadius: 50,
+  },
+  previewImage: {
+    width: 300, 
+    height: 400,
+    resizeMode: "contain",
+    transform: [{ scale: 2.0 }],
+  },
+  previewButtons: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    width: "100%",
+    paddingVertical: 20,
   },
 });

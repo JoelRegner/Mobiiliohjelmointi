@@ -1,24 +1,62 @@
-import { ThemedView } from '@/components/themed-view';
-import React from 'react';
-import { StyleSheet, Text } from 'react-native';
+import React, { useState, useCallback } from "react";
+import { View, Image, ScrollView, StyleSheet } from "react-native";
+import { Directory } from "expo-file-system";
+import { useFocusEffect } from "@react-navigation/native";
 
-export default function KuvatScreen() {
-	return (
-		<ThemedView style={styles.container}>
-			<Text style={styles.title}>Kuvat (Images)</Text>
-			<Text>Tämä on paikka, jossa kuvat näytetään. Lisää tähän kuvanäkymä tai galleria.</Text>
-		</ThemedView>
-	);
-}
+const KuvatScreen = () => {
+  const [images, setImages] = useState<string[]>([]);
+
+  const loadImages = async () => {
+    try {
+      const dirUri = Directory.document("images"); 
+      const dirInfo = await Directory.getInfoAsync(dirUri);
+
+      if (!dirInfo.exists) {
+        setImages([]);
+        return;
+      }
+
+      const files = await Directory.readDirAsync(dirUri);
+      const uris = files
+        .filter((f) => f.isFile)
+        .map((f) => f.uri)
+        .reverse();
+
+      setImages(uris);
+    } catch (error) {
+      console.log("Error loading images:", error);
+      setImages([]);
+    }
+  };
+
+  useFocusEffect(
+    useCallback(() => {
+      loadImages();
+    }, [])
+  );
+
+  return (
+    <ScrollView contentContainerStyle={styles.container}>
+      {images.map((uri) => (
+        <Image key={uri} source={{ uri }} style={styles.image} />
+      ))}
+    </ScrollView>
+  );
+};
 
 const styles = StyleSheet.create({
-	container: {
-		flex: 1,
-		padding: 16,
-	},
-	title: {
-		fontSize: 20,
-		fontWeight: '600',
-		marginBottom: 8,
-	},
+  container: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    padding: 5,
+  },
+  image: {
+    width: 100,
+    height: 100,
+    margin: 5,
+    borderRadius: 8,
+  },
 });
+
+export default KuvatScreen;
